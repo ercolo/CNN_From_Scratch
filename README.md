@@ -52,4 +52,5 @@ L’intento è comprendere a fondo ogni componente di una rete convoluzionale, d
 ## Come si esegue
 
 ```bash
-python src/convolution.py# CNN_From_Scratch
+python src/input
+.py# CNN_From_Scratch
