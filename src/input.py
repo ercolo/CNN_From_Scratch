@@ -8,7 +8,7 @@ import os
 current_fd = f"CNN_From_Scratch\\img\\tiny-imagenet-200\\train"
 dir_list = os.listdir(current_fd)
 
-train_size= 5000
+train_size= 2000
 
 yTrain = []
 immagini = []
@@ -22,7 +22,6 @@ for class_ind, i in enumerate(dir_list):
     for f in selected_files:
         immagini.append(os.path.join(path_img, f))
         yTrain.append(class_ind)
-print("ottenimento path immagini finito")
 
 elementi_dir = train_size   #500*200 è la grandezza totale del training pero troppo pesante per me
 num_img = len(immagini)
@@ -39,31 +38,35 @@ C_in_conv = 3            #canali input(RGB)
 H_f_conv, W_f_conv = 3, 3     #grandezza kernel_conv
 
 #Kernel per la convoluzione 1,2,3
-kernel_conv1 = torch.randn(C_out, C_in_conv, H_f_conv, W_f_conv, device="cuda")*0.01
-kernel_conv2 = torch.randn(C_out * 2, C_out, H_f_conv, W_f_conv, device="cuda")*0.01
-kernel_conv3 = torch.randn(C_out * 4, C_out * 2, H_f_conv, W_f_conv, device="cuda")*0.01
+kernel_conv1 = torch.randn(C_out, C_in_conv, H_f_conv, W_f_conv, device="cuda")*0.1
+kernel_conv2 = torch.randn(C_out * 2, C_out, H_f_conv, W_f_conv, device="cuda")*0.1
+kernel_conv3 = torch.randn(C_out * 4, C_out * 2, H_f_conv, W_f_conv, device="cuda")*0.1
+kernel_conv4 = torch.randn(C_out * 8, C_out * 4, H_f_conv, W_f_conv, device="cuda")*0.1
 
 #inzializzazione output convoluzioni
 conv1_out = torch.zeros(elementi_dir, 16, h, w).to("cuda")           #output della batch = elementi_dir,kernel_conv1,righe,colonne
 conv2_out = torch.zeros(elementi_dir, 32, h//2, w//2).to("cuda")     #output della batch = elementi_dir,kernel_conv2,righe//2,colonne//2    perchè è stato applicato un maxpool 2x2 e conv
 conv3_out = torch.zeros(elementi_dir, 64, h//4, w//4).to("cuda")     #output della batch = elementi_dir,kernel_conv3,righe//4,colonne//4    
+conv4_out = torch.zeros(elementi_dir, 128, h//8, w//8).to("cuda")
 
 #inizializzazione output ReLU
 ReLU1_out = torch.zeros(elementi_dir, 16, h, w).to("cuda")           #output della batch = elementi_dir,kernel_conv,righe,colonne
 ReLU2_out = torch.zeros(elementi_dir, 32, h//2, w//2).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//2,colonne//2     perchè è stato applicato un maxpool 2x2 e conv
 ReLU3_out = torch.zeros(elementi_dir, 64, h//4, w//4).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato 2 maxpool 2x2 e conv
+ReLU3_out = torch.zeros(elementi_dir, 128, h//8, w//84).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato 2 maxpool 2x2 e conv
 
 #inizializzazione output maxPooling
 pool1_out = torch.zeros(elementi_dir, 16, h//2, w//2).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//2,colonne//2     perchè è stato applicato un maxpool 2x2 e conv
 pool2_out = torch.zeros(elementi_dir, 32, h//4, w//4).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato due maxpool 2x2 e conv
 pool3_out = torch.zeros(elementi_dir, 64, h//8, w//8).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//8,colonne//8     perchè è stato applicato tre maxpool 2x2 e conv
+pool3_out = torch.zeros(elementi_dir, 128, h//16, w//16).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//8,colonne//8     perchè è stato applicato tre maxpool 2x2 e conv
 
-batch_flattern_out = torch.zeros(elementi_dir,64*(h//8)*(w//8)).to("cuda")      #appiattimento di ogni immagine per il FC Layer immagini da 4096 pixel
+batch_flattern_out = torch.zeros(elementi_dir,128*(h//16)*(w//16)).to("cuda")      #appiattimento di ogni immagine per il FC Layer immagini da 2048 pixel
 
 #inzializzazione bias
-bias_conv1 = torch.zeros(C_out).to("cuda")
-bias_conv2 = torch.zeros(C_out*2).to("cuda")
-bias_conv3 = torch.zeros(C_out*4).to("cuda")
+bias_conv1 = torch.randn(C_out, device="cuda")*0.1
+bias_conv2 = torch.randn(C_out*2, device="cuda")*0.1
+bias_conv3 = torch.randn(C_out*4, device="cuda")*0.1
 
 #Formattazione immagine a bgr a rgb ricomposizione della lista e normalizzazione
 def dataSetInput(batch,img,i):
@@ -180,17 +183,21 @@ def softMax(y):
             p[i][j] = exp_row[j] / sum_exp'''
     return p
             
-def lostFunction(batch_label,p,l,lT):
+def lostFunction(batch_label,p):
+    l = -torch.log(p[torch.arange(0,2000),batch_label] + 1e-8)
+    return torch.mean(l)
+    ''' l = torch.zeros(4000,1)
     for i in range(batch_label.shape[0]):
         l[i] = -torch.log(p[i,batch_label[i]] + 1e-8)
     lT = torch.mean(l)
-    return l,lT
+    return lT'''
+ 
 
-def oneHotEncoding(batch_label,t):
-    t.zero_()
-    for i in range(0,batch_label.shape[0]):
-        t[i,batch_label[i]] = 1
-    return t
+def oneHotEncoding(batch_label,num_classes):
+    return F.one_hot(batch_label, num_classes).float()
+    '''x = torch.zeros(batch_label.shape[0],200)
+    x[torch.arange(0,train_size),batch_label[torch.arange(0,train_size)]] = 1
+    return x'''
 
 def fullyConnectedLayer(X,weights,bias_FC,y):       #Funzione FC layer
     y = torch.matmul(X,weights)+bias_FC
@@ -228,13 +235,22 @@ def backFC1(gradienteError1, yDropOut1, p_drop, y1ReLU, X, wFC1, elementi_dir):
     dWFC1 = X.T @ gradienteError1
     dBFC1 = torch.sum(gradienteError1, dim=0)
     gradienteErrorFlatter = gradienteError1 @ wFC1.T
-    gradienteErrorPool3 = gradienteErrorFlatter.view(elementi_dir, 64, 8, 8)
-    return dWFC1, dBFC1, gradienteErrorPool3
+    gradienteErrorPool4 = gradienteErrorFlatter.view(elementi_dir, 64, 8, 8)
+    return dWFC1, dBFC1, gradienteErrorPool4
+
+def backConv4(gradienteErrorPool4,index4,conv4_out,pool3_out,kernel_conv4):
+    gradienteErrorConvReLU4 = F.max_unpool2d(gradienteErrorPool4, index4, kernel_size=2, stride=2)
+    gradienteErrorConv4 = gradienteErrorConvReLU4*(conv4_out > 0).float()
+    dW3 = gradienteKernel(pool3_out, gradienteErrorConv4, kernel_size=3, padding=1,stride=1)
+    dB3 = gradienteErrorConv4.sum(dim=(0, 2, 3))
+    gradienteErrorPool3 = F.conv_transpose2d(gradienteErrorConv4, kernel_conv4, padding=1)
+    #gradienteErrorPool2 = deCovoluzione(gradienteErrorConv3,kernel_conv3)
+    return dW3,dB3,gradienteErrorPool3
 
 def backConv3(gradienteErrorPool3,index3,conv3_out,pool2_out,kernel_conv3):
     gradienteErrorConvReLU3 = F.max_unpool2d(gradienteErrorPool3, index3, kernel_size=2, stride=2)
     gradienteErrorConv3 = gradienteErrorConvReLU3*(conv3_out > 0).float()
-    dW3 = gradienteKernel(pool2_out, gradienteErrorConv3, kernel_size=3, padding=1)
+    dW3 = gradienteKernel(pool2_out, gradienteErrorConv3, kernel_size=3, padding=1,stride=1)
     dB3 = gradienteErrorConv3.sum(dim=(0, 2, 3))
     gradienteErrorPool2 = F.conv_transpose2d(gradienteErrorConv3, kernel_conv3, padding=1)
     #gradienteErrorPool2 = deCovoluzione(gradienteErrorConv3,kernel_conv3)
@@ -245,7 +261,7 @@ def backConv2(gradienteErrorPool2,index2,conv2_out,pool1_out,kernel_conv2):
     gradienteErrorConv2 = gradienteErrorConvReLU2*(conv2_out > 0).float()
     dW2 = gradienteKernel(pool1_out, gradienteErrorConv2, kernel_size=3, padding=1)
     dB2 = gradienteErrorConv2.sum(dim=(0, 2, 3))
-    gradienteErrorPool1 = F.conv_transpose2d(gradienteErrorConv2, kernel_conv2, padding=1)
+    gradienteErrorPool1 = F.conv_transpose2d(gradienteErrorConv2, kernel_conv2, padding=1,stride=1)
     #gradienteErrorPool1 = deCovoluzione(gradienteErrorConv2,kernel_conv2)
     return dW2,dB2,gradienteErrorPool1
 
@@ -254,7 +270,7 @@ def backConv1(gradienteErrorPool1,index1,conv1_out,batch,kernel_conv1):
     gradienteErrorConv1 = gradienteErrorConvReLU1*(conv1_out > 0).float()
     dW1 = gradienteKernel(batch, gradienteErrorConv1, kernel_size=3, padding=1)
     dB1 = gradienteErrorConv1.sum(dim=(0, 2, 3))
-    gradienteErrorInput = F.conv_transpose2d(gradienteErrorConv1, kernel_conv1, padding=1)
+    gradienteErrorInput = F.conv_transpose2d(gradienteErrorConv1, kernel_conv1, padding=1,stride=1)
     #gradienteErrorInput = deCovoluzione(gradienteErrorConv1,kernel_conv1)
     return dW1,dB1,gradienteErrorInput
 
@@ -283,12 +299,46 @@ def deCovoluzione(y, kernel):
     print("fine deconvolution")
     return yNoConv
 
-def gradienteKernel(batch,conv_g,kernel_size=3,padding=1):
+def gradienteKernel(X, d_out, kernel_size=3, padding=1, stride=1):
     """
-    batch: input originale (B, C, H, W)
+    Calcola il gradiente del kernel convoluzionale in modo vettorializzato.
+    
+    Parametri:
+    - X: tensor di input al layer convoluzionale [B, C_in, H, W]
+    - d_out: gradiente dell'output convoluzionale [B, C_out, H_out, W_out]
+    - kernel_size: dimensione kernel (es. 3)
+    - padding: padding usato in convoluzione
+    - stride: stride usato nella convoluzione
+
+    Ritorna:
+    - grad_kernel: tensore del gradiente del kernel [C_out, C_in, K, K]
+    """
+
+    B, C_in, H, W = X.shape
+    B, C_out, H_out, W_out = d_out.shape
+
+    # Estrai le patch 3x3 da X
+    X_patches = F.unfold(X, kernel_size=kernel_size, padding=padding, stride=stride)  # [B, C_in*K*K, H_out*W_out]
+
+    # Reshape per matchare batch e output
+    X_patches = X_patches.transpose(1, 2)  # [B, H_out*W_out, C_in*K*K]
+    d_out_flat = d_out.reshape(B, C_out, -1).transpose(1, 2)  # [B, H_out*W_out, C_out]
+
+    # Calcolo prodotto tra output e patch
+    grad = torch.einsum('bik,bij->bkj', d_out_flat, X_patches)  # [B, C_out, C_in*K*K]
+
+    # Somma sui batch
+    grad = grad.sum(dim=0)  # [C_out, C_in*K*K]
+
+    # Reshape per tornare alla forma kernel
+    grad_kernel = grad.view(C_out, C_in, kernel_size, kernel_size)
+
+    return grad_kernel
+    
+    """batch: input originale (B, C, H, W)
     conv_g: gradiente della loss rispetto all'output della conv (B, O, H_out, W_out)
     """
-    B,C_in,H,W = batch.shape
+    '''B,C_in,H,W = batch.shape
     C_out = conv_g.shape[1]
     # Estrai le patch: (elementi_dir, C * 3 * 3, num_patches)
     patches = F.unfold(batch, kernel_size = kernel_size, padding=padding)   # [B, C_in*k*k, N]
@@ -302,7 +352,7 @@ def gradienteKernel(batch,conv_g,kernel_size=3,padding=1):
 
     grad_kernel = grad_kernel.view(C_out, C_in, kernel_size, kernel_size)
     
-    return grad_kernel / B  # media su batch
+    return grad_kernel / B  # media su batch '''
 
 '''for i in range(0,elementi_dir):
     for j in range(conv1_out.shape[1]):
@@ -328,42 +378,39 @@ bn3 = torch.nn.BatchNorm2d(64).to("cuda")'''
         
 # Inizializzazione pesi e bias FC (una volta sola, fuori dal ciclo)
 wFC1 = (torch.randn(64 * (h//8) * (w//8), 1024) * 0.01).to("cuda")
-bFC1 = (torch.randn(1024) * 0.01).to("cuda")
+bFC1 = (torch.randn(1024) * 0.1).to("cuda")
 
-wFC2 = (torch.randn(1024, 512) * 0.01).to("cuda")
-bFC2 = (torch.randn(512) * 0.01).to("cuda")
+wFC2 = (torch.randn(1024, 512) * 0.1).to("cuda")
+bFC2 = (torch.randn(512) * 0.1).to("cuda")
 
-wFC3 = (torch.randn(512, 200) * 0.01).to("cuda")
-bFC3 = (torch.randn(200) * 0.01).to("cuda")
+wFC3 = (torch.randn(512, 200) * 0.1).to("cuda")
+bFC3 = (torch.randn(200) * 0.1).to("cuda")
 
-lr = 0.05
-p_drop = 0.90  # probabilità drop out attivo (keep prob)
+lr = 0.01
+p_drop = 0.70  # probabilità drop out attivo (keep prob)
 
 accuratezza = []
 perdita = []
 probabilita = []
 yTrain = torch.tensor(yTrain).to("cuda")
 for epoch in range(200):
-    
-    indices = torch.randperm(num_img)
-    immagini = [immagini[i] for i in indices]
-    yTrain = yTrain[indices]
 
-    for minibatch in range(0, num_img, train_size):
-        print(f"inizio immagini epoch {epoch} minibatch {minibatch // train_size}")
+#for minibatch in range(0, num_img, train_size):
+    for minibatch in range(0, num_img,train_size):
         batch_imgs = immagini[minibatch : minibatch + train_size]
         batch_label = yTrain[minibatch : minibatch + train_size]
         
         batch = torch.zeros(len(batch_imgs), 3, h, w).to("cuda")
+        
+        indices = torch.randperm(train_size)
+        batch_imgs = [batch_imgs[i] for i in indices]
+        batch_label = batch_label[indices]
         
         #Prendere elementi e inseririli nel tensor batch
         for i, img_path in enumerate(batch_imgs):
             img = cv.imread(img_path)
             dataSetInput(batch, img, i)
         
-        indices = torch.randperm(batch.shape[0])
-        batch = batch[indices]
-        batch_label = batch_label[indices]
         
         #convoluzione 1
         conv1_out = convolution(batch, bias_conv1, kernel_conv1)
@@ -387,7 +434,7 @@ for epoch in range(200):
         
         #aggiorna X ogni epoca(input del FC)
         X = (flatter(pool3_out))
-
+        
         #reset output e variabili ogni epoca
         y1 = torch.zeros(elementi_dir, 1024).to("cuda")
         y2 = torch.zeros(elementi_dir, 512).to("cuda")
@@ -415,22 +462,26 @@ for epoch in range(200):
 
         y3 = fullyConnectedLayer(y2ReLU, wFC3, bFC3, y3)  
         
-        #Calcolo probabilita e errore
-        #prob = softMax(y3)                                                  #softmax
-        #loss, lossTotale = lostFunction(batch_label, prob, loss, 0)        #loss
+        # Calcolo probabilità con softmax e loss con cross entropy di PyTorch
         prob = torch.softmax(y3, dim=1)
-        target = oneHotEncoding(batch_label, target)
-        lossTotale = -torch.sum(target * torch.log(prob + 1e-7)) / elementi_dir
-        gradienteError3 = (prob - target) / elementi_dir                                 #gradiente errore per backprop
-        
-        dWFC3,dBFC3,gradienteError2 = backFC3(gradienteError3,y2ReLU,wFC3)
-        dWFC2,dBFC2,gradienteError1 = backFC2(gradienteError2, yDropOut2, p_drop, y2ReLU, y1ReLU, wFC2)
-        dWFC1,dBFC1,gradienteErrorPool3 = backFC1(gradienteError1, yDropOut1, p_drop, y1ReLU, X, wFC1, elementi_dir)
-        dW3,dB3,gradienteErrorPool2 = backConv3(gradienteErrorPool3,index3,conv3_out,pool2_out,kernel_conv3)
-        dW2,dB2,gradienteErrorPool1 = backConv2(gradienteErrorPool2,index2,conv2_out,pool1_out,kernel_conv2)
-        dW1,dB1,gradienteErrorInput = backConv1(gradienteErrorPool1,index1,conv1_out,batch,kernel_conv1)
-        
-        #Correzione FC
+        #target[torch.arange(0,elementi_dir), batch_label[torch.arange(0,elementi_dir)]] = 1
+        target = oneHotEncoding(batch_label.to("cuda"), num_classes=200)
+        # Quindi conviene passare y3 e batch_label direttamente:
+        loss = lostFunction(batch_label,prob)
+
+        # Backprop gradienti usando funzioni ottimizzate
+        # Calcolo gradiente errore per il layer finale (softmax + cross entropy)
+        gradienteError3 = (prob - target) / elementi_dir
+
+        dWFC3, dBFC3, gradienteError2 = backFC3(gradienteError3, y2ReLU, wFC3)
+        dWFC2, dBFC2, gradienteError1 = backFC2(gradienteError2, yDropOut2, p_drop, y2ReLU, y1ReLU, wFC2)
+        dWFC1, dBFC1, gradienteErrorPool4 = backFC1(gradienteError1, yDropOut1, p_drop, y1ReLU, X, wFC1, elementi_dir)
+        dW3, dB3, gradienteErrorPool3 = backConv4(gradienteErrorPool4, index4, conv4_out, pool3_out, kernel_conv4)
+        dW3, dB3, gradienteErrorPool2 = backConv3(gradienteErrorPool3, index3, conv3_out, pool2_out, kernel_conv3)
+        dW2, dB2, gradienteErrorPool1 = backConv2(gradienteErrorPool2, index2, conv2_out, pool1_out, kernel_conv2)
+        dW1, dB1, gradienteErrorInput = backConv1(gradienteErrorPool1, index1, conv1_out, batch, kernel_conv1)
+
+        '''# Aggiorna pesi e bias
         wFC3 -= lr * dWFC3
         bFC3 -= lr * dBFC3
 
@@ -439,59 +490,100 @@ for epoch in range(200):
 
         wFC1 -= lr * dWFC1
         bFC1 -= lr * dBFC1
-        
-        #Correzzion convolution
+
         kernel_conv3 -= lr * dW3
-        bias_conv3   -= lr * dB3
+        bias_conv3 -= lr * dB3
 
         kernel_conv2 -= lr * dW2
-        bias_conv2   -= lr * dB2
+        bias_conv2 -= lr * dB2
 
         kernel_conv1 -= lr * dW1
-        bias_conv1   -= lr * dB1
+        bias_conv1 -= lr * dB1'''
+        def print_first_two(name, tensor_before, tensor_after):
+            print(f"{name} prima (primi 2 elementi): {tensor_before.flatten()[:2]}")
+            print(f"{name} dopo (primi 2 elementi): {tensor_after.flatten()[:2]}\n")
+
+        '''# Per ogni variabile:
+        wFC3_before = wFC3.clone()
+        wFC3 -= lr * dWFC3
+        print_first_two("wFC3", wFC3_before, wFC3)
+
+        bFC3_before = bFC3.clone()
+        bFC3 -= lr * dBFC3
+        print_first_two("bFC3", bFC3_before, bFC3)
+
+        wFC2_before = wFC2.clone()
+        wFC2 -= lr * dWFC2
+        print_first_two("wFC2", wFC2_before, wFC2)
+
+        bFC2_before = bFC2.clone()
+        bFC2 -= lr * dBFC2
+        print_first_two("bFC2", bFC2_before, bFC2)
+
+        wFC1_before = wFC1.clone()
+        wFC1 -= lr * dWFC1
+        print_first_two("wFC1", wFC1_before, wFC1)
+
+        bFC1_before = bFC1.clone()
+        bFC1 -= lr * dBFC1
+        print_first_two("bFC1", bFC1_before, bFC1)
+
+        kernel_conv3_before = kernel_conv3.clone()
+        kernel_conv3 -= lr * dW3
+        print_first_two("kernel_conv3", kernel_conv3_before, kernel_conv3)
+
+        bias_conv3_before = bias_conv3.clone()
+        bias_conv3 -= lr * dB3
+        print_first_two("bias_conv3", bias_conv3_before, bias_conv3)
+
+        kernel_conv2_before = kernel_conv2.clone()
+        kernel_conv2 -= lr * dW2
+        print_first_two("kernel_conv2", kernel_conv2_before, kernel_conv2)
+
+        bias_conv2_before = bias_conv2.clone()
+        bias_conv2 -= lr * dB2
+        print_first_two("bias_conv2", bias_conv2_before, bias_conv2)
+
+        kernel_conv1_before = kernel_conv1.clone()
+        kernel_conv1 -= lr * dW1
+        print_first_two("kernel_conv1", kernel_conv1_before, kernel_conv1)
+
+        bias_conv1_before = bias_conv1.clone()
+        bias_conv1 -= lr * dB1
+        print_first_two("bias_conv1", bias_conv1_before, bias_conv1)'''
         
-        if epoch%40==0:
+        wFC3 -= lr * dWFC3
+        bFC3 -= lr * dBFC3
+
+        wFC2 -= lr * dWFC2
+        bFC2 -= lr * dBFC2
+
+        wFC1 -= lr * dWFC1
+        bFC1 -= lr * dBFC1
+
+        kernel_conv3 -= lr * dW3
+        bias_conv3 -= lr * dB3
+
+        kernel_conv2 -= lr * dW2
+        bias_conv2 -= lr * dB2
+
+        kernel_conv1 -= lr * dW1
+        bias_conv1 -= lr * dB1
+        
+        if epoch % 40 == 0 and minibatch == 0:
             lr *= 0.1
 
-        '''plt.figure(figsize=(12, 4))
-
-        plt.subplot(1, 5, 1)
-        plt.title("pool1_out")
-        plt.imshow(pool1_out[0][0].cpu(), cmap='gray')
-        plt.axis('off')
-        
-        plt.subplot(1, 5, 2)
-        plt.title("pool1_out")
-        plt.imshow(pool1_out[0][1].cpu(), cmap='gray')
-        plt.axis('off')
-        
-        plt.subplot(1, 5, 3)
-        plt.title("pool1_out")
-        plt.imshow(pool1_out[0][2].cpu(), cmap='gray')
-        plt.axis('off')
-
-        plt.subplot(1, 5, 4)
-        plt.title("pool2_out")
-        plt.imshow(pool2_out[0][0].cpu(), cmap='gray')
-        plt.axis('off')
-
-        plt.subplot(1, 5, 5)
-        plt.title("pool3_out")
-        plt.imshow(pool3_out[0][0].cpu(), cmap='gray')
-        plt.axis('off')
-
-        plt.tight_layout()
-        plt.show()'''
-        
-        print(f"Epoch {epoch+1} - Loss totale: {lossTotale.item()}")
+        print(f"Epoch {epoch+1} - Loss totale: {loss.item()}")
         pred = prob.argmax(dim=1)
         acc = (pred == batch_label).float().mean()
         print(f"Accuracy: {acc.item()*100:.2f}% minibatch {minibatch // train_size}")
+
         torch.cuda.empty_cache()
+
         accuratezza.append(f"{acc.item()*100:.2f}%")
-        perdita.append(f"{lossTotale.item()}")
+        perdita.append(f"{loss.item()}")
         probabilita.append(prob.argmax(dim=1).tolist())
-    
+        
 with open("valori.csv", "w") as f:
     f.write("accuracy,loss,probabilities\n")
     for acc, loss, probs in zip(accuratezza, perdita, probabilita):
