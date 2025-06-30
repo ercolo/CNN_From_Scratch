@@ -53,13 +53,13 @@ conv4_out = torch.zeros(elementi_dir, 128, h//8, w//8).to("cuda")
 ReLU1_out = torch.zeros(elementi_dir, 16, h, w).to("cuda")           #output della batch = elementi_dir,kernel_conv,righe,colonne
 ReLU2_out = torch.zeros(elementi_dir, 32, h//2, w//2).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//2,colonne//2     perchè è stato applicato un maxpool 2x2 e conv
 ReLU3_out = torch.zeros(elementi_dir, 64, h//4, w//4).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato 2 maxpool 2x2 e conv
-ReLU3_out = torch.zeros(elementi_dir, 128, h//8, w//84).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato 2 maxpool 2x2 e conv
+ReLU4_out = torch.zeros(elementi_dir, 128, h//8, w//8).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato 2 maxpool 2x2 e conv
 
 #inizializzazione output maxPooling
 pool1_out = torch.zeros(elementi_dir, 16, h//2, w//2).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//2,colonne//2     perchè è stato applicato un maxpool 2x2 e conv
 pool2_out = torch.zeros(elementi_dir, 32, h//4, w//4).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//4,colonne//4     perchè è stato applicato due maxpool 2x2 e conv
 pool3_out = torch.zeros(elementi_dir, 64, h//8, w//8).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//8,colonne//8     perchè è stato applicato tre maxpool 2x2 e conv
-pool3_out = torch.zeros(elementi_dir, 128, h//16, w//16).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//8,colonne//8     perchè è stato applicato tre maxpool 2x2 e conv
+pool4_out = torch.zeros(elementi_dir, 128, h//16, w//16).to("cuda")     #output della batch = elementi_dir,kernel_conv,righe//8,colonne//8     perchè è stato applicato tre maxpool 2x2 e conv
 
 batch_flattern_out = torch.zeros(elementi_dir,128*(h//16)*(w//16)).to("cuda")      #appiattimento di ogni immagine per il FC Layer immagini da 2048 pixel
 
@@ -67,6 +67,7 @@ batch_flattern_out = torch.zeros(elementi_dir,128*(h//16)*(w//16)).to("cuda")   
 bias_conv1 = torch.randn(C_out, device="cuda")*0.1
 bias_conv2 = torch.randn(C_out*2, device="cuda")*0.1
 bias_conv3 = torch.randn(C_out*4, device="cuda")*0.1
+bias_conv4 = torch.randn(C_out*8, device="cuda")*0.1
 
 #Formattazione immagine a bgr a rgb ricomposizione della lista e normalizzazione
 def dataSetInput(batch,img,i):
@@ -235,7 +236,7 @@ def backFC1(gradienteError1, yDropOut1, p_drop, y1ReLU, X, wFC1, elementi_dir):
     dWFC1 = X.T @ gradienteError1
     dBFC1 = torch.sum(gradienteError1, dim=0)
     gradienteErrorFlatter = gradienteError1 @ wFC1.T
-    gradienteErrorPool4 = gradienteErrorFlatter.view(elementi_dir, 64, 8, 8)
+    gradienteErrorPool4 = gradienteErrorFlatter.view(elementi_dir, 128, 4, 4)
     return dWFC1, dBFC1, gradienteErrorPool4
 
 def backConv4(gradienteErrorPool4,index4,conv4_out,pool3_out,kernel_conv4):
@@ -377,7 +378,7 @@ bn2 = torch.nn.BatchNorm2d(32).to("cuda")
 bn3 = torch.nn.BatchNorm2d(64).to("cuda")'''        
         
 # Inizializzazione pesi e bias FC (una volta sola, fuori dal ciclo)
-wFC1 = (torch.randn(64 * (h//8) * (w//8), 1024) * 0.01).to("cuda")
+wFC1 = (torch.randn(128 * (h//16) * (w//16), 1024) * 0.01).to("cuda")
 bFC1 = (torch.randn(1024) * 0.1).to("cuda")
 
 wFC2 = (torch.randn(1024, 512) * 0.1).to("cuda")
@@ -386,7 +387,7 @@ bFC2 = (torch.randn(512) * 0.1).to("cuda")
 wFC3 = (torch.randn(512, 200) * 0.1).to("cuda")
 bFC3 = (torch.randn(200) * 0.1).to("cuda")
 
-lr = 0.01
+lr = 0.1
 p_drop = 0.70  # probabilità drop out attivo (keep prob)
 
 accuratezza = []
@@ -431,9 +432,14 @@ for epoch in range(200):
         ReLU3_out = ReLU(conv3_out)                     #ReLU 3
         pool3_out,index3 = maxPooling(ReLU3_out)        #maxPooling 3
         
+        #convoluzione 4
+        conv4_out = convolution(pool3_out, bias_conv4, kernel_conv4)
+        conv4_out = normalizzation(conv4_out)                      #normalizzazione
+        ReLU4_out = ReLU(conv4_out)                     #ReLU 4
+        pool4_out,index4 = maxPooling(ReLU4_out)        #maxPooling 4
         
         #aggiorna X ogni epoca(input del FC)
-        X = (flatter(pool3_out))
+        X = (flatter(pool4_out))
         
         #reset output e variabili ogni epoca
         y1 = torch.zeros(elementi_dir, 1024).to("cuda")
@@ -476,7 +482,7 @@ for epoch in range(200):
         dWFC3, dBFC3, gradienteError2 = backFC3(gradienteError3, y2ReLU, wFC3)
         dWFC2, dBFC2, gradienteError1 = backFC2(gradienteError2, yDropOut2, p_drop, y2ReLU, y1ReLU, wFC2)
         dWFC1, dBFC1, gradienteErrorPool4 = backFC1(gradienteError1, yDropOut1, p_drop, y1ReLU, X, wFC1, elementi_dir)
-        dW3, dB3, gradienteErrorPool3 = backConv4(gradienteErrorPool4, index4, conv4_out, pool3_out, kernel_conv4)
+        dW4, dB4, gradienteErrorPool3 = backConv4(gradienteErrorPool4, index4, conv4_out, pool3_out, kernel_conv4)
         dW3, dB3, gradienteErrorPool2 = backConv3(gradienteErrorPool3, index3, conv3_out, pool2_out, kernel_conv3)
         dW2, dB2, gradienteErrorPool1 = backConv2(gradienteErrorPool2, index2, conv2_out, pool1_out, kernel_conv2)
         dW1, dB1, gradienteErrorInput = backConv1(gradienteErrorPool1, index1, conv1_out, batch, kernel_conv1)
@@ -560,6 +566,9 @@ for epoch in range(200):
 
         wFC1 -= lr * dWFC1
         bFC1 -= lr * dBFC1
+        
+        kernel_conv4 -= lr * dW4
+        bias_conv4 -= lr * dB4
 
         kernel_conv3 -= lr * dW3
         bias_conv3 -= lr * dB3
@@ -571,7 +580,7 @@ for epoch in range(200):
         bias_conv1 -= lr * dB1
         
         if epoch % 40 == 0 and minibatch == 0:
-            lr *= 0.1
+            lr *= 0.5
 
         print(f"Epoch {epoch+1} - Loss totale: {loss.item()}")
         pred = prob.argmax(dim=1)
@@ -582,10 +591,8 @@ for epoch in range(200):
 
         accuratezza.append(f"{acc.item()*100:.2f}%")
         perdita.append(f"{loss.item()}")
-        probabilita.append(prob.argmax(dim=1).tolist())
         
 with open("valori.csv", "w") as f:
     f.write("accuracy,loss,probabilities\n")
-    for acc, loss, probs in zip(accuratezza, perdita, probabilita):
-        probs_str = ";".join(str(p) for p in probs)
-        f.write(f"{acc},{loss},{probs_str}\n")
+    for acc, loss in zip(accuratezza, perdita):
+        f.write(f"{acc},{loss}\n")
